@@ -6,7 +6,5 @@ __pycache__/
 env/
 
 # Data and Logs
-*.xlsx
-*.ods
 .DS_Store
 .streamlit/

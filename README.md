@@ -1,4 +1,4 @@
-# P Electromigration Solver
+# IP Electromigration Solver
 
 A high-performance EDA (Electronic Design Automation) dashboard built with Streamlit for Power Device Macro Electromigration (EM) sign-off.
 

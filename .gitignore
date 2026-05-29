@@ -1,0 +1,12 @@
+```text
+# Python environment
+__pycache__/
+*.py[cod]
+.venv/
+env/
+
+# Data and Logs
+*.xlsx
+*.ods
+.DS_Store
+.streamlit/

@@ -26,12 +26,22 @@ def clean_cell(val):
     return s
 
 def find_valid_pdk_file():
-    """Locates the PDK source file in the application directory."""
-    current_dir = os.path.dirname(os.path.abspath(__file__))
+    """Locates the PDK source file."""
+    current_dir = os.path.dirname(os.path.abspath(__file__)) # This is /src
+    
+    # Check current directory
     for fmt in [{"filename": "pdk_rules.ods", "engine": "odf"}, {"filename": "pdk_rules.xlsx", "engine": "openpyxl"}]:
         full_path = os.path.join(current_dir, fmt["filename"])
         if os.path.exists(full_path):
             return full_path, fmt["engine"]
+            
+    # Check parent/data directory
+    data_dir = os.path.join(os.path.dirname(current_dir), "data")
+    for fmt in [{"filename": "pdk_rules.ods", "engine": "odf"}, {"filename": "pdk_rules.xlsx", "engine": "openpyxl"}]:
+        full_path = os.path.join(data_dir, fmt["filename"])
+        if os.path.exists(full_path):
+            return full_path, fmt["engine"]
+            
     return None, None
 
 def initialize_database_from_excel():

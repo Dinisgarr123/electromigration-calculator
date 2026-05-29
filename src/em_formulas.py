@@ -89,6 +89,7 @@ def get_vertical_matrix(stack_rules, selected_stack, max_temp, stripe_w, num_fin
 
     matrix = {}
     for name, metals in METAL_STACK_MAP.items():
+        
         # Vertical uses (num_fingers / 2.0) instead of metal_pairs
         total = sum(get_single_metal_capacity(stack_rules, selected_stack, max_temp, m, stripe_w, 1, w_coeff, l_coeff) for m in metals)
         matrix[name] = round(total * (num_fingers / 2.0), 2)
@@ -169,10 +170,11 @@ def calculate_vertical_configuration(stack_rules, selected_stack, max_temp, curr
     """
     # 1. Retrieve the capacity matrix: Fetches the pre-calculated capacity 
     # for all vertical combinations defined in the technology rules.
+    clean_v_key = v_metal_comb.replace(" ", "")
     v_matrix = get_vertical_matrix(stack_rules, selected_stack, max_temp, v_stripe_w, num_fingers, w_coeff, l_coeff)
     
     # 2. Extract capacity: Map the user's selected combination string to the capacity value.
-    total_max_current_per_column = v_matrix.get(v_metal_comb, 0.0)
+    total_max_current_per_column = v_matrix.get(clean_v_key, 0.0)
     
     # 3. Area Intersect Adjustments: 
     # Normalizes the current requirement by calculating the overlap ratio 

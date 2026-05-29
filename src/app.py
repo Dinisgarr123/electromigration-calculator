@@ -199,6 +199,8 @@ with panel_v:
         st.success(f"✅ **PASS** | Max: {v_res['max_current_per_column']:.2f} mA")
     else:
         st.error(f"❌ **FAIL** | Max: {v_res['max_current_per_column']:.2f} mA")
+
+    
     
     # Invisible spacer to match the height of the caption in column 1
     st.write("") 

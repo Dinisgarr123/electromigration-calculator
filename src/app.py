@@ -17,16 +17,20 @@ import pandas as pd
 
 import streamlit as st
 
+import plotly.graph_objects as go
+
 import tech_rules as tech
 
 import em_formulas as em
 
 import optimizer as opt
 
+import layout_viewer as lv
+
 
 st.set_page_config(page_title="IP Electromigration Solver", layout="wide")
 
-st.title("⚡ Power Device Macro EM Sign-Off Workspace")
+st.title("Power Device Macro EM Workspace")
 
 
 # 1. Dynamic Technology Node Ingestion
@@ -69,11 +73,21 @@ via_options = list(stack_rules["vias"].keys()) if stack_rules and stack_rules.ge
 
 
 # Block B: Horizontal Physical Layout
+# Block B: Horizontal Physical Layout
 with st.sidebar.expander("🟥 Horizontal Layer Layout", expanded=True):
+    # Initialize state
+    if 'h_stripe_w' not in st.session_state:
+        st.session_state.h_stripe_w = 20.0
+
     horizontal_stack_options = ["M4", "M3", "M2", "M3 + M4", "M2 + M3", "M2 + M3 + M4"]
     selected_h_metal = st.selectbox("Horizontal Metal Stack Combination", horizontal_stack_options, index=0)
     device_w_used = st.number_input("Device W Used (µm)", min_value=1.0, value=45.0)
-    h_stripe_w = st.number_input("Horizontal Stripe W (µm)", min_value=0.1, value=20.0)
+
+
+    # Input uses the session state
+    h_stripe_w = st.number_input("Horizontal Stripe W (µm)", min_value=0.1, value=st.session_state.h_stripe_w)
+    st.session_state.h_stripe_w = h_stripe_w
+    
     h_space_w = st.number_input("Space Between Stripes (µm)", min_value=0.01, value=1.41)
     metal_pairs = st.number_input("# of Metal Pairs", min_value=1, value=1)
 
@@ -157,7 +171,7 @@ with st.expander("📄 View Secondary PDK Meta Details & Source Documents", expa
 
 # --- UI VERIFICATION REPORT PANELS ---
 st.markdown("---")
-st.subheader("🏁 Sign-off Compliance Analysis Panels")
+st.subheader("Analysis Panels")
 
 panel_h, panel_v, panel_core = st.columns(3)
 
@@ -190,7 +204,7 @@ with panel_v:
     st.write("") 
 
 with panel_core:
-    st.markdown("### 🦿 Power Device Local Core")
+    st.markdown("### Power Device Local Core")
     
     # Prepare data for the table
     core_data = [
@@ -225,40 +239,99 @@ with panel_core:
 
 # --- STRATEGY SWEEP MATRIX ---
 st.markdown("---")
-st.subheader("📊 Matrix Core Strategy Panel Lookup")
+st.subheader("📊 Top 3 Recommended Configurations")
 
-with st.expander("🛠️ Inspect 'horizontal metal configurations' active validation matrix", expanded=True):
-    st.write("This grid mirrors the exact layout logic options from your spreadsheet sheet rows.")
+# Calculate the Top 3 based on our new global logic
+# Note: You might need to add a "get_top_three" function to your optimizer
+# or just loop through all valid ones and sort them.
+if st.button("🔄 Refresh Strategic Matrix"):
+    # This loop gets all valid combinations and sorts them by width (ascending)
+    valid_configs = []
+    for h_name in em.METAL_STACK_MAP.keys():
+        for v_name in em.METAL_STACK_MAP.keys():
+            if opt.is_combination_valid(h_name, v_name):
+                # opt_result is now a dictionary
+                opt_result = opt.sweep_best_metal_width(stack_rules, selected_stack, max_temp, 
+                                               current_per_unit, num_cols, h_name, 
+                                               h_space_w, device_w_used, metal_pairs, 
+                                               w_coeff, l_coeff)
+                
+                # Extract the number from the dict
+                width_val = opt_result.get('best_metal_width', 0)
+                
+                if width_val > 0:
+                    valid_configs.append({"H": h_name, "V": v_name, "MinWidth": width_val})
     
-    # CHANGE THIS: Call em.get_horizontal_matrix instead of the deleted optimizer function
-    comb_matrix = em.get_horizontal_matrix(
-        stack_rules, selected_stack, max_temp, h_stripe_w, metal_pairs, w_coeff, l_coeff
-    )
-    
-    clean_user_selection = selected_h_metal.replace(" ", "")
-    matrix_rows = []
-    
-    for formula_name, max_curr_capacity in comb_matrix.items():
-        is_active = formula_name.replace(" ", "") == clean_user_selection
-        
-        matrix_rows.append({
-            "Horizontal Metal Option Choice": formula_name,
-            "Total Parallel Max Current (mA)": max_curr_capacity,
-            "Valid? (Active Flag Match)": "🎯 ACTIVE" if is_active else "0.00 mA",
-            "Resolved Safe Routing Cap": max_curr_capacity if is_active else 0.0
-        })
-        
-    df_matrix = pd.DataFrame(matrix_rows)
-    
-    def highlight_active_row(row):
-        if row["Valid? (Active Flag Match)"] == "🎯 ACTIVE":
-            return ['background-color: rgba(46, 164, 79, 0.15); font-weight: bold; color: #2ea44f;'] * len(row)
-        return [''] * len(row)
+    # Sort by width and take top 3
+    st.session_state.top_configs = sorted(valid_configs, key=lambda x: x['MinWidth'])[:3]
 
-    st.dataframe(
-        df_matrix.style.apply(highlight_active_row, axis=1),
-        use_container_width=True,
-        hide_index=True
-    )
+# Display the results
+if 'top_configs' in st.session_state:
+    df_top = pd.DataFrame(st.session_state.top_configs)
+    st.table(df_top)
+    st.info("💡 **Strategy Insight:** These are the most footprint-efficient stacks that meet your current requirements.")
+else:
+    st.warning("Click 'Refresh Strategic Matrix' to generate the top 3 configuration candidates.")
     
-    st.info(f"💡 **Excel Sign-Off Output:** Selected Combo **{selected_h_metal}** provides **{h_res['max_current_per_row']:.1f} mA** max capacity. The baseline benchmark single-layer width recommended is **{h_res['best_metal_width']:.2f} µm**.")
+
+
+
+# ADD-ONS: Layout_Viewer and Optimizer Engine
+
+# --- ADVANCED SETTINGS SECTION ---
+st.sidebar.header("⚙️ Advanced Settings")
+show_optimizer = st.sidebar.checkbox("Enable Automated Width Optimizer", value=True)
+show_viewer = st.sidebar.checkbox("Enable Layout Topology Viewer", value=True)
+
+
+# 1. OPTIMIZER ENGINE (In your Advanced Settings section)
+if show_optimizer:
+    st.markdown("---")
+    st.subheader("🚀 Automated Width Optimizer")
+    
+    col_opt_1, col_opt_2 = st.columns([1, 2])
+    with col_opt_1:
+        if st.button("Calculate Optimal"):
+            # Instead of passing the sidebar's 'selected_h_metal', 
+            # we run the 'find_global_best_configuration' to find 
+            # what *should* be used to meet the current requirements.
+            
+            best_config = opt.find_global_best_configuration(
+                stack_rules, selected_stack, max_temp, current_per_unit, 
+                num_cols, h_space_w, device_w_used, metal_pairs, 
+                w_coeff, l_coeff
+            )
+            
+            if best_config:
+                # Store this result globally so it can be applied later
+                st.session_state.best_w = best_config['width']
+                st.session_state.best_h_stack = best_config['h']
+                st.success(f"Optimal Found! Recommended Stack: {best_config['h']} at {best_config['width']} µm")
+            else:
+                st.error("No valid configuration found for these requirements.")
+
+    with col_opt_2:
+        if 'last_recommended_w' in st.session_state:
+            rec_w = st.session_state.last_recommended_w
+            st.info(f"Recommended: **{rec_w} µm**")
+            
+            # The "Adoption" button
+            if st.button("Apply Recommended Width"):
+                st.session_state.h_stripe_w = rec_w
+                st.rerun() # This is the only place you force a refresh
+
+    with col_opt_2:
+        if 'best_w' in st.session_state:
+            st.success(f"Suggested Optimal Width: **{st.session_state.best_w} µm**")
+        else:
+            st.info("Click the button to find the recommended optimal width based on current constraints.")
+
+# 2. LAYOUT VIEWER
+if show_viewer:
+    st.divider()
+    st.subheader("Layout Topology Preview")
+    
+    fig = lv.render_interactive_grid(num_rows, num_cols, selected_h_metal, selected_v_metal)
+    st.plotly_chart(fig, use_container_width=True)
+    
+    st.caption(f"Visualizing **{selected_h_metal}** (Horizontal) and **{selected_v_metal}** (Vertical) distribution.")

@@ -132,14 +132,8 @@ def calculate_horizontal_configuration(stack_rules, selected_stack, max_temp, cu
     # Density is (Metal Area / Total Area), excluding empty spacing
     calculated_metal_density_pct = ((total_w_stripes_space - (num_spaces * h_space_w)) / total_w_stripes_space) * 100.0 if total_w_stripes_space > 0 else 0.0
 
-    # 4. Optimization Sweep: 
-    # Runs a baseline normalization check to find the minimum required width 
-    # to meet current design requirements.
-    sweep_res = optimizer.sweep_best_metal_width(
-        stack_rules, selected_stack, max_temp, current_per_unit, num_cols, h_metal_comb, metal_pairs, w_coeff, l_coeff
-    )
 
-    # 5. Sign-off Determination: Compare total array demand against matrix-derived supply
+    # 4. Sign-off Determination: Compare total array demand against matrix-derived supply
 
     pass_status = matched_max_current >= current_needed_per_row
     return {
@@ -148,7 +142,6 @@ def calculate_horizontal_configuration(stack_rules, selected_stack, max_temp, cu
         "current_ratio_pct": current_ratio_pct,
         "total_w_stripes_space": total_w_stripes_space,
         "calculated_metal_density_pct": calculated_metal_density_pct,
-        "best_metal_width": sweep_res["best_metal_width"],
         "pass": pass_status
     }
 

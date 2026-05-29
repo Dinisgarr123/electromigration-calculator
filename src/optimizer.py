@@ -1,36 +1,86 @@
-import tech_rules as tech
+import em_formulas as em
 
-def sweep_best_metal_width(stack_rules, selected_stack, max_temp, current_per_unit, num_cols, h_metal_comb, metal_pairs, w_coeff, l_coeff):
-    """
-    Replicates the auxiliary single-layer baseline table at the bottom of the sheet.
-    Sweeps a standard base metal thread to locate the normalization width breakthrough.
-    """
-    # The sheet uses M4 or the dominant single layer as the reference test bed channel
-    metals_in_stack = [m.strip() for m in h_metal_comb.split("+")]
-    ref_metal = metals_in_stack[-1] if metals_in_stack else "M4"
-    meta = stack_rules["metals"].get(ref_metal, {})
-    i_base = meta.get("current_mA", 0.0)
-    wpar = meta.get("wpar", 1.0)
-    reduction = meta.get("reduction", 0.0)
-    temp_factor = tech.get_temp_factor(selected_stack, ref_metal, max_temp)
-    final_coefficient = temp_factor * w_coeff * l_coeff
+# Add this to optimizer.py
 
-    # Target normalization boundary match
-    target_threshold = 130.5
-    start_width = 1.0
-    end_width = 45.0
-    step = 0.05
-    best_width = 21.75 # Default sheet baseline alignment value
+def sweep_best_metal_width(stack_rules, selected_stack, max_temp, current_per_unit, 
+                           num_cols, h_metal_comb, h_space_w, device_w_used, 
+                           metal_pairs, w_coeff, l_coeff):
     
-    current_w = start_width
-    while current_w <= end_width:
-        eff_w = (wpar * current_w) - reduction
-        possible_current = i_base * eff_w * final_coefficient * metal_pairs
-        if possible_current >= target_threshold:
-            best_width = round(current_w, 2)
-            break
-        current_w += step
+    best_width = 0.0
+    # Increase range if needed, but start checking from a safe minimum
+    # Check if the device width is even large enough to support the minimum spacing
+    if (h_space_w * 2) >= device_w_used:
+        return {"best_metal_width": 0.0}
+
+    for current_w in [i * 0.05 for i in range(2, 401)]: # Sweep up to 20.0um
         
-    return {
-        "best_metal_width": best_width
-    }
+        # 1. Footprint Constraint
+        if ((current_w * 2) + h_space_w) > device_w_used:
+            continue
+            
+        # 2. EM Constraint
+        res = em.calculate_horizontal_configuration(
+            stack_rules, selected_stack, max_temp, current_per_unit, num_cols, 
+            h_metal_comb, current_w, h_space_w, metal_pairs, w_coeff, l_coeff
+        )
+        
+        if res.get('pass', False):
+            best_width = round(current_w, 2)
+            break 
+            
+    return {"best_metal_width": best_width}
+
+def is_combination_valid(h_comb_name, v_comb_name):
+    """
+    Validates combinations by pretending M1 is in the vertical stack
+    and checking for overlaps with the horizontal stack.
+    """
+    h_metals = em.METAL_STACK_MAP.get(h_comb_name, [])
+    # DYNAMIC: Create a virtual vertical stack that includes M1
+    # without actually changing the original data.
+    base_v_metals = em.METAL_STACK_MAP.get(v_comb_name, [])
+    v_metals_virtual = list(set(base_v_metals + ["M1"]))
+    
+    # 1. Short-circuit check: Ensure no overlap between H and V
+    for m in h_metals:
+        if m in v_metals_virtual:
+            return False
+            
+    return True
+
+def find_global_best_configuration(stack_rules, selected_stack, max_temp, current_per_unit, 
+                                   num_cols, h_space_w, device_w_used, metal_pairs, 
+                                   w_coeff, l_coeff):
+    
+    best_config = None
+    min_width_overall = 999.0
+    
+    # Iterate through all possible combinations in your map
+    for h_name in em.METAL_STACK_MAP.keys():
+        for v_name in em.METAL_STACK_MAP.keys():
+            
+            if is_combination_valid(h_name, v_name):
+                # FIX: Pass all required arguments to the function
+                result_dict = sweep_best_metal_width(
+                    stack_rules=stack_rules, 
+                    selected_stack=selected_stack, 
+                    max_temp=max_temp, 
+                    current_per_unit=current_per_unit, 
+                    num_cols=num_cols, 
+                    h_metal_comb=h_name, 
+                    h_space_w=h_space_w, 
+                    device_w_used=device_w_used, 
+                    metal_pairs=metal_pairs, 
+                    w_coeff=w_coeff, 
+                    l_coeff=l_coeff
+                )
+                
+                # Extract the numeric value safely
+                width_val = result_dict.get('best_metal_width', 0.0)
+                
+                # NOW compare the number
+                if width_val > 0 and width_val < min_width_overall:
+                    min_width_overall = width_val
+                    best_config = {"h": h_name, "v": v_name, "width": width_val}
+                    
+    return best_config
